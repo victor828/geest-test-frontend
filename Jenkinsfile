@@ -21,9 +21,15 @@ pipeline {
 
         stage('Install & Lint') {
             steps {
-                sh 'corepack enable'
-                sh 'pnpm install --frozen-lockfile'
-                sh 'pnpm run build'
+                // corepack enable escribe shims en /usr/bin por defecto, lo que
+                // requiere root. Se instalan en el workspace (siempre escribible)
+                // y se antepone al PATH dentro del mismo shell.
+                sh '''
+                    export PATH="$WORKSPACE/.bin:$PATH"
+                    corepack enable --install-directory "$WORKSPACE/.bin"
+                    pnpm install --frozen-lockfile
+                    pnpm run build
+                '''
             }
         }
 
