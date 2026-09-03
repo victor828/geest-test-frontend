@@ -5,9 +5,9 @@
 ##########################
 FROM node:22-alpine AS base
 WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 COPY package.json pnpm-lock.yaml .npmrc ./
-RUN --network=host npm install -g pnpm@9.0.0 \
-  && (pnpm install --frozen-lockfile || (sleep 5 && pnpm install --frozen-lockfile) || (sleep 15 && pnpm install --frozen-lockfile))
+RUN pnpm install --frozen-lockfile
 
 ##########################
 # Dev: servidor Vite con hot-reload
