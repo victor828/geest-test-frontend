@@ -19,20 +19,6 @@ pipeline {
             }
         }
 
-        stage('Install & Lint') {
-            steps {
-                // corepack enable escribe shims en /usr/bin por defecto, lo que
-                // requiere root. Se instalan en el workspace (siempre escribible)
-                // y se antepone al PATH dentro del mismo shell.
-                sh '''
-                    export PATH="$WORKSPACE/.bin:$PATH"
-                    corepack enable --install-directory "$WORKSPACE/.bin"
-                    pnpm install --frozen-lockfile
-                    pnpm run build
-                '''
-            }
-        }
-
         stage('Load prod env file') {
             when { branch 'main' }
             steps {
