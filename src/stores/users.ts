@@ -9,7 +9,9 @@ export const useUsersStore = defineStore('users', {
     loading: false,
   }),
   actions: {
-    async fetch(page = this.meta.page, limit = this.meta.limit) {
+    async fetch(page?: number, limit?: number) {
+      page ??= this.meta.page
+      limit ??= this.meta.limit
       this.loading = true
       try {
         const res = await listUsers(page, limit)

@@ -10,7 +10,9 @@ export const useTasksStore = defineStore('tasks', {
     loading: false,
   }),
   actions: {
-    async fetch(page = this.meta.page, limit = this.meta.limit, ...statusArg: [TaskStatus | undefined] | []) {
+    async fetch(page?: number, limit?: number, ...statusArg: [TaskStatus | undefined] | []) {
+      page ??= this.meta.page
+      limit ??= this.meta.limit
       this.loading = true
       if (statusArg.length > 0) this.status = statusArg[0]
       try {
