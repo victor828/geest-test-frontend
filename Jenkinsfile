@@ -8,26 +8,14 @@ pipeline {
     }
 
     environment {
-        IMAGE_NAME   = 'geest-test-frontend'
-        REGISTRY     = credentials('docker-registry-url')
-        DOCKER_CREDS = credentials('docker-registry-credentials')
-        ENV_FILE     = credentials('geest-frontend-env-file')
-        IMAGE_TAG    = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
+        IMAGE_NAME = 'geest-test-frontend'
+        IMAGE_TAG  = "${env.BRANCH_NAME}-${env.BUILD_NUMBER}"
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-            }
-        }
-
-        stage('Load env file') {
-            steps {
-                // ENV_FILE apunta al archivo temporal de la credencial "Secret file".
-                // Se copia al workspace como .env para que Docker Compose y los
-                // siguientes stages lo usen (page/registry/backend, puertos, etc).
-                sh 'cp "$ENV_FILE" .env'
             }
         }
 
@@ -39,51 +27,68 @@ pipeline {
             }
         }
 
+        stage('Load prod env file') {
+            when { branch 'main' }
+            steps {
+                // Credencial "Secret file" en Jenkins con id: geest-frontend-env-file
+                // Solo se necesita para construir/desplegar producción (main).
+                withCredentials([file(credentialsId: 'geest-frontend-env-file', variable: 'ENV_FILE')]) {
+                    sh 'cp "$ENV_FILE" .env'
+                }
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
-                script {
-                    def target = (env.BRANCH_NAME == 'main' || env.BRANCH_NAME == 'master') ? 'prod' : 'dev'
-                    sh """
-                        set -a
-                        . ./.env
-                        set +a
-                        docker build \
-                          --target ${target} \
-                          --build-arg VITE_API_BASE_URL=\$VITE_API_BASE_URL \
-                          -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} \
-                          -t ${REGISTRY}/${IMAGE_NAME}:${env.BRANCH_NAME}-latest \
-                          .
-                    """
+                // Credencial "Secret text" en Jenkins con id: docker-registry-url
+                withCredentials([string(credentialsId: 'docker-registry-url', variable: 'REGISTRY')]) {
+                    script {
+                        if (env.BRANCH_NAME == 'main') {
+                            sh """
+                                set -a
+                                . ./.env
+                                set +a
+                                docker build \
+                                  --target prod \
+                                  --build-arg VITE_API_BASE_URL=\$VITE_API_BASE_URL \
+                                  -t \$REGISTRY/${IMAGE_NAME}:${IMAGE_TAG} \
+                                  -t \$REGISTRY/${IMAGE_NAME}:prod-latest \
+                                  .
+                            """
+                        } else {
+                            sh """
+                                docker build \
+                                  --target dev \
+                                  -t \$REGISTRY/${IMAGE_NAME}:${IMAGE_TAG} \
+                                  .
+                            """
+                        }
+                    }
                 }
             }
         }
 
         stage('Push Docker Image') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    branch 'develop'
-                }
-            }
+            when { branch 'main' }
             steps {
-                sh 'echo $DOCKER_CREDS_PSW | docker login $REGISTRY -u $DOCKER_CREDS_USR --password-stdin'
-                sh "docker push ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
-                sh "docker push ${REGISTRY}/${IMAGE_NAME}:${env.BRANCH_NAME}-latest"
+                // Credencial "Secret text" con id: docker-registry-url
+                // Credencial "Username with password" con id: docker-registry-credentials
+                withCredentials([
+                    string(credentialsId: 'docker-registry-url', variable: 'REGISTRY'),
+                    usernamePassword(credentialsId: 'docker-registry-credentials', usernameVariable: 'DOCKER_USR', passwordVariable: 'DOCKER_PSW')
+                ]) {
+                    sh 'echo "$DOCKER_PSW" | docker login "$REGISTRY" -u "$DOCKER_USR" --password-stdin'
+                    sh 'docker push "$REGISTRY/${IMAGE_NAME}:${IMAGE_TAG}"'
+                    sh 'docker push "$REGISTRY/${IMAGE_NAME}:prod-latest"'
+                }
             }
         }
 
-        stage('Deploy') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                    branch 'develop'
-                }
-            }
+        stage('Deploy Prod') {
+            when { branch 'main' }
             steps {
                 sh '''
-                    docker compose --env-file .env -f docker-compose.yml --profile prod up -d --build frontend-prod
+                    docker compose -f docker-compose.prod.yml --env-file .env up -d --build
                 '''
             }
         }
@@ -95,10 +100,10 @@ pipeline {
             sh 'docker image prune -f || true'
         }
         success {
-            echo "Build ${IMAGE_TAG} completado correctamente."
+            echo "Build ${env.IMAGE_TAG} completado correctamente."
         }
         failure {
-            echo "Build ${IMAGE_TAG} fallo."
+            echo "Build ${env.IMAGE_TAG} fallo."
         }
     }
 }
