@@ -32,46 +32,54 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                // Credencial "Secret text" en Jenkins con id: docker-registry-url
-                withCredentials([string(credentialsId: 'docker-registry-url', variable: 'REGISTRY')]) {
-                    script {
-                        if (env.BRANCH_NAME == 'main') {
-                            sh """
-                                set -a
-                                . ./.env
-                                set +a
-                                docker build \
-                                  --target prod \
-                                  --build-arg VITE_API_BASE_URL=\$VITE_API_BASE_URL \
-                                  -t \$REGISTRY/${IMAGE_NAME}:${IMAGE_TAG} \
-                                  -t \$REGISTRY/${IMAGE_NAME}:prod-latest \
-                                  .
-                            """
-                        } else {
-                            sh """
-                                docker build \
-                                  --target dev \
-                                  -t \$REGISTRY/${IMAGE_NAME}:${IMAGE_TAG} \
-                                  .
-                            """
-                        }
+                script {
+                    if (env.BRANCH_NAME == 'main') {
+                        sh """
+                            set -a
+                            . ./.env
+                            set +a
+                            docker build \
+                              --target prod \
+                              --build-arg VITE_API_BASE_URL=\$VITE_API_BASE_URL \
+                              -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                              -t ${IMAGE_NAME}:prod-latest \
+                              .
+                        """
+                    } else {
+                        sh """
+                            docker build \
+                              --target dev \
+                              -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                              .
+                        """
                     }
                 }
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Push Docker Image (opcional)') {
             when { branch 'main' }
             steps {
-                // Credencial "Secret text" con id: docker-registry-url
-                // Credencial "Username with password" con id: docker-registry-credentials
-                withCredentials([
-                    string(credentialsId: 'docker-registry-url', variable: 'REGISTRY'),
-                    usernamePassword(credentialsId: 'docker-registry-credentials', usernameVariable: 'DOCKER_USR', passwordVariable: 'DOCKER_PSW')
-                ]) {
-                    sh 'echo "$DOCKER_PSW" | docker login "$REGISTRY" -u "$DOCKER_USR" --password-stdin'
-                    sh 'docker push "$REGISTRY/${IMAGE_NAME}:${IMAGE_TAG}"'
-                    sh 'docker push "$REGISTRY/${IMAGE_NAME}:prod-latest"'
+                script {
+                    // Credenciales "Secret text" (docker-registry-url) y "Username
+                    // with password" (docker-registry-credentials). Son opcionales:
+                    // si no existen, se omite el push sin romper el pipeline.
+                    try {
+                        withCredentials([
+                            string(credentialsId: 'docker-registry-url', variable: 'REGISTRY'),
+                            usernamePassword(credentialsId: 'docker-registry-credentials', usernameVariable: 'DOCKER_USR', passwordVariable: 'DOCKER_PSW')
+                        ]) {
+                            sh '''
+                                docker tag "$IMAGE_NAME:$IMAGE_TAG" "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
+                                docker tag "$IMAGE_NAME:prod-latest" "$REGISTRY/$IMAGE_NAME:prod-latest"
+                                echo "$DOCKER_PSW" | docker login "$REGISTRY" -u "$DOCKER_USR" --password-stdin
+                                docker push "$REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
+                                docker push "$REGISTRY/$IMAGE_NAME:prod-latest"
+                            '''
+                        }
+                    } catch (err) {
+                        echo "Push a registry omitido (no hay credenciales docker-registry-url / docker-registry-credentials configuradas): ${err}"
+                    }
                 }
             }
         }
