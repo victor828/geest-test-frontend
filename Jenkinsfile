@@ -39,6 +39,7 @@ pipeline {
                             . ./.env
                             set +a
                             docker build \
+                              --allow network.host \
                               --target prod \
                               --build-arg VITE_API_BASE_URL=\$VITE_API_BASE_URL \
                               -t ${IMAGE_NAME}:${IMAGE_TAG} \
@@ -48,6 +49,7 @@ pipeline {
                     } else {
                         sh """
                             docker build \
+                              --allow network.host \
                               --target dev \
                               -t ${IMAGE_NAME}:${IMAGE_TAG} \
                               .
